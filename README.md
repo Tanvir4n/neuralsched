@@ -49,8 +49,7 @@ neuralsched/
 │   │   ├── modules/        smartpack, greensched, sentinelai, costcut
 │   │   ├── telemetry/      simulator.py (DCGM-style telemetry stream)
 │   │   ├── config.py  database.py  main.py
-│   ├── Dockerfile          local / generic container (port 8000)
-│   ├── Dockerfile.hf       Hugging Face Spaces container (port 7860)
+│   ├── Dockerfile          container image (binds to $PORT, works on Render)
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/               React + Vite + TypeScript dashboard
@@ -132,7 +131,7 @@ Full click-by-click guide in [`DEPLOYMENT.md`](./DEPLOYMENT.md). Summary:
 | Layer | Host | Result |
 |-------|------|--------|
 | Database | Supabase (Postgres) | `DATABASE_URL` connection string |
-| Backend | Hugging Face Spaces (Docker) | `https://<user>-neuralsched.hf.space` |
+| Backend | Render (Docker web service) | `https://neuralsched-backend.onrender.com` |
 | Frontend | Vercel | `https://neuralsched.vercel.app` |
 
 Deploy order is **Database → Backend → Frontend** because each step needs the

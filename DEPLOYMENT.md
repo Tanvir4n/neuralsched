@@ -1,12 +1,17 @@
 # NeuralSched — Phase 3 Deployment Guide
 
-Deploy the full stack online, with the **real trained models** running:
+Deploy the full stack online, for free, with the **real trained models** running:
 
-| Layer      | Host                              | Cost | URL you'll get                          |
-|------------|-----------------------------------|------|-----------------------------------------|
-| Database   | Supabase (Postgres)               | Free | `postgresql://...` connection string    |
-| Backend    | Hugging Face Spaces (Docker)      | Free | `https://<user>-neuralsched.hf.space`   |
-| Frontend   | Vercel                            | Free | `https://neuralsched.vercel.app`        |
+| Layer      | Host                       | Cost | URL you'll get                          |
+|------------|----------------------------|------|-----------------------------------------|
+| Database   | Supabase (Postgres)        | Free | `postgresql://...` connection string    |
+| Backend    | Render (Docker web service)| Free | `https://neuralsched-backend.onrender.com` |
+| Frontend   | Vercel                     | Free | `https://neuralsched.vercel.app`        |
+
+> **Why Render, not Hugging Face?** HF now requires a paid PRO plan for Docker
+> and Gradio Spaces (only Static Spaces stay free), so it can no longer host a
+> Python/torch backend for free. Render still has a genuine free web-service tier
+> (no credit card).
 
 Deploy in this order: **Database → Backend → Frontend** (each needs the previous one's URL).
 
@@ -14,13 +19,13 @@ Deploy in this order: **Database → Backend → Frontend** (each needs the prev
 
 ## 0. Prerequisites
 
-- A GitHub account (to hold the code) — https://github.com
-- A Hugging Face account — https://huggingface.co/join
+- A GitHub account with this repo pushed to it — https://github.com
+- A Render account — https://render.com (sign in with GitHub)
 - A Vercel account — https://vercel.com/signup
 - A Supabase account — https://supabase.com/dashboard
-- `git` installed locally — https://git-scm.com/downloads
 
-The 4 trained weights (`backend/app/models/*.pth`, ~2 MB total) are **committed to the repo**, so they ship inside the backend image automatically — no extra hosting step.
+The 4 trained weights (`backend/app/models/*.pth`, ~2 MB total) are **committed to
+the repo**, so they ship inside the backend image automatically — no extra hosting step.
 
 ---
 
@@ -35,24 +40,16 @@ The 4 trained weights (`backend/app/models/*.pth`, ~2 MB total) are **committed 
    ```
 5. Replace `[YOUR-PASSWORD]` with the password from step 2. **Save this full string** — it's your `DATABASE_URL`.
 
-> Use the **Session pooler** (port 6543) connection string — it's the one that works from a serverless/container host.
+> Use the **Session pooler** (port 6543) connection string — it's the one that works from a container host like Render.
 
 ---
 
 ## 2. Put the code on GitHub
 
-If the project isn't on GitHub yet:
+If the project isn't on GitHub yet, from the clean repo folder:
 
-```bash
-cd "d:/AI Hackathon"
-git init
-git add .
-git commit -m "NeuralSched full stack"
-```
-
-Create an empty repo at https://github.com/new (name it `neuralsched`), then:
-
-```bash
+```powershell
+cd "d:/AI Hackathon/neuralsched"
 git remote add origin https://github.com/<your-user>/neuralsched.git
 git branch -M main
 git push -u origin main
@@ -62,80 +59,41 @@ git push -u origin main
 
 ---
 
-## 3. Backend — Hugging Face Spaces (Docker)
+## 3. Backend — Render (Docker web service)
 
-HF Spaces gives free CPU with enough RAM/disk for the torch stack. A Space is its own git repo; we push the `backend/` folder into it.
+Render reads the `render.yaml` blueprint at the repo root, builds `backend/Dockerfile`, and gives you an HTTPS URL. The Dockerfile binds to Render's injected `$PORT` automatically.
 
-### 3a. Create the Space
+### 3a. Create the service (Blueprint — easiest)
 
-1. Go to https://huggingface.co/new-space
-2. **Owner**: you. **Space name**: `neuralsched`.
-3. **License**: mit. **Select the SDK**: **Docker** → **Blank**.
-4. **Hardware**: `CPU basic` (free). **Visibility**: Public.
-5. Click **Create Space**.
+1. Go to https://dashboard.render.com → **New +** → **Blueprint**.
+2. Connect your GitHub account and select the **`neuralsched`** repo.
+3. Render detects `render.yaml` and shows a service named **`neuralsched-backend`** (Docker, free plan). Click **Apply**.
 
-### 3b. Push the backend into the Space
+> If you prefer to skip the blueprint: **New + → Web Service → connect repo →
+> Runtime: Docker → Root Directory: `backend` → Dockerfile Path: `./Dockerfile` →
+> Instance Type: Free.** Then add the env vars in 3b.
 
-The Space repo expects the `Dockerfile` at its **root**. Your backend already has `backend/Dockerfile.hf`. Push the *contents of `backend/`* to the Space, using `Dockerfile.hf` as the Space's `Dockerfile`:
+### 3b. Set the backend environment variables
 
-```powershell
-# clone the (empty) Space repo next to your project
-cd "d:/AI Hackathon"
-git clone https://huggingface.co/spaces/<your-user>/neuralsched hf-space
-cd hf-space
+In the service → **Environment** tab, add:
 
-# copy backend contents in
-Copy-Item -Recurse -Force ..\backend\* .
+| Key                     | Value                                              |
+|-------------------------|----------------------------------------------------|
+| `DATABASE_URL`          | the Supabase URI from step 1                        |
+| `JWT_SECRET`            | a long random string (any 32+ char secret)          |
+| `NUM_GPU_NODES`         | `32`                                               |
+| `TELEMETRY_TICK_SECONDS`| `10`                                               |
+| `ENVIRONMENT`           | `production`                                        |
 
-# there must be exactly ONE file named "Dockerfile" at the root:
-# delete the Render one, then rename the HF one into place.
-Remove-Item -Force Dockerfile
-Rename-Item Dockerfile.hf Dockerfile
-```
+Click **Save, rebuild, and deploy**. The first build takes ~5-10 min (installing torch). When it shows **Live**, open:
 
-Add the Space README front-matter (HF needs it). Create `hf-space/README.md`:
+- `https://neuralsched-backend.onrender.com/` → JSON with all four models showing `gnn_ppo` / `lstm` / `tcn` / `lstm` (NOT `mock`).
+- `https://neuralsched-backend.onrender.com/healthz` → `{"status":"ok"}`
 
-```markdown
----
-title: NeuralSched
-emoji: 🧠
-colorFrom: blue
-colorTo: green
-sdk: docker
-app_port: 7860
-pinned: false
----
-NeuralSched GPU-cluster-intelligence API.
-```
+**Copy this Render URL** — it's your `VITE_API_BASE` for the frontend.
 
-Commit and push:
-
-```bash
-git add .
-git commit -m "NeuralSched backend on HF Spaces"
-git push
-```
-
-### 3c. Set the backend secrets
-
-In the Space page → **Settings** → **Variables and secrets** → add:
-
-| Name                    | Type    | Value                                              |
-|-------------------------|---------|----------------------------------------------------|
-| `DATABASE_URL`          | Secret  | the Supabase URI from step 1                        |
-| `JWT_SECRET`            | Secret  | a long random string (e.g. run `openssl rand -hex 32`) |
-| `NUM_GPU_NODES`         | Variable| `32`                                               |
-| `TELEMETRY_TICK_SECONDS`| Variable| `10`                                               |
-| `ENVIRONMENT`           | Variable| `production`                                        |
-
-The Space rebuilds automatically. First build takes ~5–10 min (installing torch). When it shows **Running**, open:
-
-- `https://<your-user>-neuralsched.hf.space/` → should return JSON with all four models showing `gnn_ppo` / `lstm` / `tcn` (NOT `mock`).
-- `https://<your-user>-neuralsched.hf.space/healthz` → `{"status":"ok"}`
-
-**Copy this Space URL** — it's your `VITE_API_BASE` for the frontend.
-
-> The direct Space URL is `https://<user>-<space>.hf.space`. Find the exact one via the Space page → the **⋮** menu → **Embed this Space** → **Direct URL**.
+> Your exact URL is shown at the top of the Render service page. It's
+> `https://<service-name>.onrender.com`.
 
 ---
 
@@ -148,10 +106,10 @@ The Space rebuilds automatically. First build takes ~5–10 min (installing torc
 
    | Name             | Value                                                 |
    |------------------|-------------------------------------------------------|
-   | `VITE_API_BASE`  | `https://<your-user>-neuralsched.hf.space`            |
-   | `VITE_WS_BASE`   | `wss://<your-user>-neuralsched.hf.space`              |
+   | `VITE_API_BASE`  | `https://neuralsched-backend.onrender.com`            |
+   | `VITE_WS_BASE`   | `wss://neuralsched-backend.onrender.com`              |
 
-   > No trailing slash, no `/api`. The backend routes live at the root (`/auth/login`, `/health/predictions`, …).
+   > No trailing slash, no `/api`. The backend routes live at the root (`/auth/login`, `/health/predictions`, …). Note `VITE_WS_BASE` uses **`wss://`** (secure WebSocket), not `https://`.
 
 5. Click **Deploy**. After ~1 min you get `https://neuralsched.vercel.app`.
 
@@ -165,7 +123,7 @@ The Space rebuilds automatically. First build takes ~5–10 min (installing torc
 4. **Submit a job** → SmartPack places it (real `gnn_ppo`), GreenSched shows carbon decision.
 5. **Health** view → SentinelAI predictions; toggle **Auto-migrate**; use the demo helper to force a fault:
    ```
-   POST https://<your-user>-neuralsched.hf.space/dev/inject-fault?node_id=gpu-node-5
+   POST https://neuralsched-backend.onrender.com/dev/inject-fault?node_id=gpu-node-5
    ```
    Then watch the alert + migration (auto or manual) appear.
 
@@ -173,8 +131,19 @@ The Space rebuilds automatically. First build takes ~5–10 min (installing torc
 
 ## 6. Notes & gotchas
 
-- **Cold start**: free HF Spaces sleep after inactivity. First request after idle takes ~20–40 s. Hit `/healthz` once before a live demo to warm it.
-- **CORS** is already open (`allow_origins=["*"]` in `app/main.py`), so Vercel → HF works out of the box.
+- **Cold start**: the free Render service **sleeps after 15 min of inactivity**;
+  the first request after that takes ~30-60 s to wake. Before a live demo, open
+  `/healthz` once to warm it, or set a free cron ping (e.g. cron-job.org hitting
+  `/healthz` every 10 min).
+- **Free instance hours**: Render gives 750 free instance-hours per month per
+  workspace — plenty for one service. If exhausted, the service is suspended
+  until the next month.
+- **Memory (512 MB)**: the torch stack is heavy. If a deploy is killed with an
+  out-of-memory error during startup, the models fall back to their mock paths
+  and the demo still works end-to-end; the app never goes blank. (Upgrading to a
+  paid instance removes the limit if you need the real models guaranteed.)
+- **CORS** is already open (`allow_origins=["*"]` in `app/main.py`), so Vercel → Render works out of the box.
 - **DB tables** are auto-created on backend startup (`init_db()` in `app/main.py`) — nothing to run manually.
 - **Model check**: if `/` shows `mock(...)` instead of real methods, the `.pth` files didn't ship — confirm `backend/app/models/*.pth` are committed and not caught by `.gitignore`/`.dockerignore`.
-- **Redeploy**: push to GitHub → Vercel redeploys the frontend; push to the Space repo → HF rebuilds the backend.
+- **Redeploy**: push to GitHub → Vercel redeploys the frontend and Render rebuilds the backend automatically.
+- **Supabase paused project**: free projects pause after inactivity — open the dashboard once to resume before demoing.
