@@ -217,6 +217,36 @@ def cost_analytics(user: User = Depends(get_current_user)):
     }
 
 
+# ------------------------- Safety Envelope + Shadow Test -------------------------
+@router.get("/safety/status", tags=["safety"])
+def safety_status(user: User = Depends(get_current_user)):
+    """Live envelope limits, shadow comparison (agent vs FIFO), and blocked log."""
+    from app.modules import safety_envelope
+    return safety_envelope.status()
+
+
+class SafetyLimitsRequest(BaseModel):
+    max_node_temp_c: float | None = None
+    max_job_wait_sec: float | None = None
+
+
+@router.post("/safety/limits", tags=["safety"])
+def safety_set_limits(req: SafetyLimitsRequest,
+                      user: User = Depends(get_current_user)):
+    """Live-adjust the hard limits so tightening one blocks actions in real time."""
+    from app.modules import safety_envelope
+    return safety_envelope.set_limits(req.max_node_temp_c, req.max_job_wait_sec)
+
+
+@router.post("/safety/force-block", tags=["safety"])
+def safety_force_block(user: User = Depends(get_current_user)):
+    """Demo trigger: force the next shadow action to breach the envelope so a
+    block is provably shown live (Section 5 deliverable)."""
+    from app.modules import safety_envelope
+    safety_envelope.force_block_next()
+    return {"ok": True, "message": "Next shadow placement will be blocked by the envelope."}
+
+
 # ------------------------- Telemetry WebSocket -------------------------
 @router.websocket("/stream/telemetry")
 async def stream_telemetry(ws: WebSocket):

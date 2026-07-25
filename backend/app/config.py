@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     # SmartPack's PPO policy is trained for a fixed 32-node cluster.
     num_gpu_nodes: int = 32
 
+    # --- Safety Envelope (Additional Challenge: Safety Envelope + Shadow Test) ---
+    # Hard limits the shadow agent's hypothetical action may never break.
+    max_node_temp_c: float = 82.0     # reject any placement onto a hotter node
+    max_job_wait_sec: float = 120.0   # reject any placement that would starve a job
+    # Auto synthetic job stream that continuously feeds the shadow comparison.
+    synthetic_jobs_enabled: bool = True
+    synthetic_job_period_sec: float = 6.0
+
     # --- Models ---
     models_dir: str = "app/models"
 

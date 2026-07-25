@@ -32,7 +32,16 @@ async def lifespan(app: FastAPI):
         mod.load_model()
 
     simulator.start()
+
+    # Safety Envelope + Shadow Test: start the auto synthetic job stream so the
+    # shadow comparison and blocked log fill in live (real submitted jobs feed
+    # it too). run_shadow_round is injected to avoid a circular import.
+    from app.api import scheduler
+    from app.modules import safety_envelope
+    safety_envelope.start_synthetic_stream(scheduler.run_shadow_round)
+
     yield
+    await safety_envelope.stop_synthetic_stream()
     await simulator.stop()
 
 

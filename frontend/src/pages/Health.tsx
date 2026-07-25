@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ShieldAlert, Bug, Zap, ArrowRightLeft } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, SectionTitle, SimBadge } from "../components/ui";
+import { Loader, SENTINEL_MESSAGES } from "../components/Loader";
 import { api } from "../lib/api";
 import { tokens } from "../theme/tokens";
 
@@ -20,6 +21,7 @@ export default function Health() {
   const [autoMigrate, setAutoMigrate] = useState(false);
   const [migrations, setMigrations] = useState<Migration[]>([]);
   const [busy, setBusy] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const load = () =>
     api.get("/health/predictions").then((r) => {
@@ -27,6 +29,7 @@ export default function Health() {
       setAlerts(r.data.alerts);
       setAutoMigrate(r.data.auto_migrate);
       setMigrations(r.data.migrations ?? []);
+      setLoaded(true);
       if (!selected && r.data.predictions.length) {
         const top = [...r.data.predictions].sort((a, b) => b.failure_probability - a.failure_probability)[0];
         setSelected(top.node_id);
@@ -74,6 +77,12 @@ export default function Health() {
         }
       />
 
+      {!loaded ? (
+        <Card>
+          <Loader messages={SENTINEL_MESSAGES} accent={tokens.color.amber} />
+        </Card>
+      ) : (
+        <>
       {alerts.length > 0 && (
         <Card style={{ borderColor: tokens.color.red, marginBottom: 16 }} className="alert-pulse">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -209,6 +218,8 @@ export default function Health() {
             ))}
           </div>
         </Card>
+      )}
+        </>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, SectionTitle, SimBadge, Metric, Pill } from "../components/ui";
+import { Loader, COSTCUT_MESSAGES } from "../components/Loader";
 import { api } from "../lib/api";
 import { tokens } from "../theme/tokens";
 
@@ -68,6 +69,12 @@ export default function Cost() {
         right={<SimBadge />}
       />
 
+      {!data ? (
+        <Card>
+          <Loader messages={COSTCUT_MESSAGES} accent={tokens.color.teal} />
+        </Card>
+      ) : (
+        <>
       <motion.div
         variants={gridStagger}
         initial="hidden"
@@ -132,6 +139,8 @@ export default function Cost() {
         </Card>
         </motion.div>
       </motion.div>
+        </>
+      )}
     </div>
   );
 }

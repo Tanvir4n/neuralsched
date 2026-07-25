@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Moon, Sun, LogOut, Activity, User, Info, Mail, Home } from "lucide-react";
+import { Moon, Sun, LogOut, Activity, User, Info, Mail, Home, ShieldCheck } from "lucide-react";
 import { Logo } from "./Logo";
 import { useAuth, useTheme } from "../lib/store";
 import { moduleMeta, ModuleKey, tokens } from "../theme/tokens";
@@ -91,6 +91,26 @@ export function Navbar({ clusterHealthy }: { clusterHealthy: boolean }) {
             </NavLink>
           );
         })}
+        <NavLink
+          to="/safety"
+          style={({ isActive }) => ({
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            padding: "7px 12px",
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 500,
+            color: isActive ? "var(--text-strong)" : "var(--text)",
+            background: isActive ? "color-mix(in srgb, var(--surface-alt) 90%, transparent)" : "transparent",
+            border: isActive
+              ? `1px solid color-mix(in srgb, ${tokens.color.primary} 40%, transparent)`
+              : "1px solid transparent",
+          })}
+        >
+          <ShieldCheck size={14} color={tokens.color.primary} />
+          Safety
+        </NavLink>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>

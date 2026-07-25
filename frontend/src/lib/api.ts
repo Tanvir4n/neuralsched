@@ -52,3 +52,54 @@ export async function signup(email: string, password: string, role: string) {
   const { data } = await api.post("/auth/signup", { email, password, role });
   return data;
 }
+
+// ---- Safety Envelope + Shadow Test ----
+export interface SafetyLimits {
+  max_node_temp_c: number;
+  max_job_wait_sec: number;
+}
+
+export interface ShadowAgent {
+  completions: number;
+  blocked: number;
+  failures: number;
+  avg_completion_sec: number;
+}
+
+export interface ShadowFifo {
+  completions: number;
+  failures: number;
+  avg_completion_sec: number;
+}
+
+export interface BlockedEntry {
+  job: string;
+  simulated: boolean;
+  node: string;
+  violated_limit: string;
+  reason: string;
+  temp_c: number;
+  est_wait_sec: number;
+  ts: number;
+}
+
+export interface SafetyStatus {
+  limits: SafetyLimits;
+  comparison: { agent: ShadowAgent; fifo: ShadowFifo; executor: string };
+  blocked_log: BlockedEntry[];
+}
+
+export async function getSafetyStatus() {
+  const { data } = await api.get("/safety/status");
+  return data as SafetyStatus;
+}
+
+export async function setSafetyLimits(limits: Partial<SafetyLimits>) {
+  const { data } = await api.post("/safety/limits", limits);
+  return data as SafetyLimits;
+}
+
+export async function forceBlockNext() {
+  const { data } = await api.post("/safety/force-block");
+  return data as { message: string };
+}

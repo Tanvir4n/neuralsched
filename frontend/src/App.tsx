@@ -12,6 +12,7 @@ import JobSubmission from "./pages/JobSubmission";
 import Health from "./pages/Health";
 import Carbon from "./pages/Carbon";
 import Cost from "./pages/Cost";
+import Safety from "./pages/Safety";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Profile from "./pages/Profile";
@@ -61,6 +62,10 @@ export default function App() {
         <Route
           path="/cost"
           element={<Protected><Shell><Cost /></Shell></Protected>}
+        />
+        <Route
+          path="/safety"
+          element={<Protected><Shell><Safety /></Shell></Protected>}
         />
         <Route
           path="/about"

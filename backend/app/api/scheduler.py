@@ -16,7 +16,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models.db_models import Job, JobStatus, JobTag, Alert
-from app.modules import smartpack, greensched, sentinelai, costcut
+from app.modules import smartpack, greensched, sentinelai, costcut, safety_envelope
 from app.telemetry.simulator import simulator
 
 # In-memory comparison metrics (SmartPack vs naive FIFO).
@@ -131,11 +131,9 @@ def _update_comparison(smart: dict, fifo: dict):
     )
 
 
-def submit_job(db: Session, job: Job) -> dict:
-    """Resolve a job to exactly one path and persist the outcome."""
-    snap = simulator.snapshot()
-    # SmartPack real schema: nodes with id/gpu_util/queue_len/active_jobs/neighbors.
-    nodes = [
+def _nodes_for_smartpack(snap: dict) -> list[dict]:
+    """SmartPack real schema: id/gpu_util/queue_len/active_jobs/neighbors."""
+    return [
         {
             "id": n["node_id"],
             "gpu_util": n["gpu_util"],
@@ -146,6 +144,36 @@ def submit_job(db: Session, job: Job) -> dict:
         for n in snap["nodes"]
     ]
 
+
+def run_shadow_round(job_name: str, gpu_requirement: int, tag: str,
+                     simulated: bool) -> dict:
+    """One Safety-Envelope + Shadow-Test round for a single job.
+
+    SmartPack produces a HYPOTHETICAL placement (shadow only) which the envelope
+    validates; FIFO produces the placement that would really run. Nothing here
+    mutates the cluster. Returns the envelope evaluation for this job.
+    """
+    snap = simulator.snapshot()
+    nodes = _nodes_for_smartpack(snap)
+    agent_choice = smartpack.predict({
+        "job": {"gpu_requirement": gpu_requirement, "tag": tag},
+        "nodes": nodes,
+    })
+    fifo_choice = _fifo_place()
+    evaluation = safety_envelope.evaluate(job_name, agent_choice, fifo_choice, snap,
+                                          simulated=simulated)
+    return {"evaluation": evaluation, "agent": agent_choice, "fifo": fifo_choice}
+
+
+def submit_job(db: Session, job: Job) -> dict:
+    """Resolve a job to exactly one path and persist the outcome.
+
+    SAFETY-ENVELOPE ROUND RULE: the simple FIFO scheduler is the ONLY thing that
+    actually places a real job. SmartPack runs in shadow mode on the same job to
+    produce a hypothetical decision (checked by the envelope, scored by the
+    shadow test), but that decision is NEVER applied to the cluster. This is the
+    sheet's "prove itself before it controls real jobs" requirement.
+    """
     green_result = None
     if job.tag == JobTag.urgent:
         decision = "dispatch_now"
@@ -169,19 +197,20 @@ def submit_job(db: Session, job: Job) -> dict:
             "message": "Queued for a lower-carbon window.",
         }
 
-    # Dispatch now -> SmartPack placement (real GNN+PPO input schema).
-    smart = smartpack.predict({
-        "job": {"gpu_requirement": job.gpu_requirement, "tag": job.tag.value},
-        "nodes": nodes,
-    })
-    fifo = _fifo_place()
+    # Shadow round: SmartPack (hypothetical) + FIFO (real) + envelope check.
+    round_result = run_shadow_round(
+        job_name=job.name, gpu_requirement=job.gpu_requirement,
+        tag=job.tag.value, simulated=False,
+    )
+    smart = round_result["agent"]   # shadow only, NOT applied
+    fifo = round_result["fifo"]     # the real placement
     _update_comparison(smart, fifo)
 
-    # Cluster Orchestrator mock accepts the placement.
-    job.assigned_node = smart["assigned_node"]
-    job.placement_score = smart["placement_score"]
+    # FIFO is the real executor: the orchestrator applies the FIFO placement.
+    job.assigned_node = fifo["assigned_node"]
+    job.placement_score = fifo["placement_score"]
     job.status = JobStatus.running
-    node = simulator.nodes.get(smart["assigned_node"])
+    node = simulator.nodes.get(fifo["assigned_node"])
     if node:
         node.active_jobs += 1
     db.commit()
@@ -191,9 +220,10 @@ def submit_job(db: Session, job: Job) -> dict:
         "job": _job_dict(job),
         "path": "urgent_direct" if job.tag == JobTag.urgent else "greensched_dispatch",
         "green": green_result,
-        "smartpack": smart,
-        "fifo": fifo,
-        "message": f"Placed on {smart['assigned_node']} (orchestrator accepted).",
+        "smartpack": smart,          # shadow agent's hypothetical choice
+        "fifo": fifo,                # what actually ran
+        "safety": round_result["evaluation"],
+        "message": f"Placed on {fifo['assigned_node']} by FIFO (agent ran in shadow).",
     }
 
 
